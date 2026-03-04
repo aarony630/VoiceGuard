@@ -44,39 +44,6 @@ voice-biometrics-call/
 
 ---
 
-## Setup
-
-### 1. Clone the repo
-```bash
-git clone https://github.com/JzZ404/voice-biometrics-call.git
-cd voice-biometrics-call
-```
-
-### 2. Install dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Enroll verified callers
-Create a subfolder per person inside `enrollment/` and add `.wav` or `.mp3` voice samples. More samples per person = better accuracy. Three or more is recommended.
-
-```
-enrollment/
-  PersonA/
-    sample1.wav
-    sample2.wav
-  PersonB/
-    sample1.wav
-```
-
-### 4. Run the app
-```bash
-python app.py
-```
-The Gradio interface will open in your browser at `http://localhost:7860`
-
----
-
 ## Usage
 
 | Tab | Description |
