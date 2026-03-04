@@ -1,3 +1,6 @@
+import subprocess
+import tempfile
+import imageio_ffmpeg
 import numpy as np
 import matplotlib.pyplot as plt
 import librosa
@@ -9,19 +12,39 @@ from scipy.spatial.distance import cosine
 # --- Config ---
 ENROLLMENT_DIR = "enrollment"   # subfolders = one person each (e.g. enrollment/Joyce/)
 TEST_DIR       = "test"
-THRESHOLD      = 0.75           # cosine similarity cutoff (tune 0.75-0.90)
+THRESHOLD      = 0.82           # cosine similarity cutoff (tune 0.75-0.90)
+MIN_MARGIN     = 0.08           # winner must beat 2nd place by at least this much
 
 
 def plot_mfcc(ax, audio_path, title):
-    y, sr = librosa.load(audio_path, sr=None)
+    wav_path, is_tmp = to_wav_if_needed(audio_path)
+    y, sr = librosa.load(wav_path, sr=None)
+    if is_tmp:
+        Path(wav_path).unlink(missing_ok=True)
     mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
     librosa.display.specshow(mfccs, x_axis="time", ax=ax, sr=sr)
     ax.set_title(title, fontsize=9)
     ax.set_ylabel("Coeff")
 
 
+def to_wav_if_needed(path):
+    """Convert m4a to a temp wav file via ffmpeg; return path to use."""
+    if Path(path).suffix.lower() != ".m4a":
+        return path, False
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.close()
+    subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", path, "-ar", "16000", "-ac", "1", tmp.name],
+        check=True, capture_output=True
+    )
+    return tmp.name, True
+
+
 def get_embedding(encoder, path):
-    wav = preprocess_wav(path)
+    wav_path, is_tmp = to_wav_if_needed(path)
+    wav = preprocess_wav(wav_path)
+    if is_tmp:
+        Path(wav_path).unlink(missing_ok=True)
     return encoder.embed_utterance(wav)
 
 
@@ -82,10 +105,22 @@ def main(name_filter=None):
     results = {}
     for name, data in profiles.items():
         sim = 1 - cosine(data["profile"], test_embedding)
-        matched = sim >= THRESHOLD
-        results[name] = {"sim": sim, "matched": matched}
-        status = "MATCH" if matched else "NO MATCH"
-        print(f"  {name:20s}  similarity={sim:.4f}  [{status}]")
+        results[name] = {"sim": sim, "matched": False}
+
+    # Determine winner: must exceed threshold AND have a clear margin over 2nd place
+    sorted_scores = sorted(results.items(), key=lambda x: x[1]["sim"], reverse=True)
+    if len(sorted_scores) >= 2:
+        top_name, top_data = sorted_scores[0]
+        second_sim = sorted_scores[1][1]["sim"]
+        margin = top_data["sim"] - second_sim
+        if top_data["sim"] >= THRESHOLD and margin >= MIN_MARGIN:
+            results[top_name]["matched"] = True
+    elif sorted_scores and sorted_scores[0][1]["sim"] >= THRESHOLD:
+        results[sorted_scores[0][0]]["matched"] = True
+
+    for name, r in results.items():
+        status = "MATCH" if r["matched"] else "NO MATCH"
+        print(f"  {name:20s}  similarity={r['sim']:.4f}  [{status}]")
 
     # --- Plot ---
     n_people = len(profiles)
@@ -118,7 +153,7 @@ def main(name_filter=None):
     ax_r.text(0.5, 0.38, "\n".join(lines),
               transform=ax_r.transAxes, fontsize=11,
               color="black", ha="center", va="center")
-    ax_r.text(0.5, 0.18, f"Threshold: {THRESHOLD:.2%}",
+    ax_r.text(0.5, 0.18, f"Threshold: {THRESHOLD:.2%}  |  Min margin: {MIN_MARGIN:.0%}",
               transform=ax_r.transAxes, fontsize=9,
               color="grey", ha="center", va="center")
     ax_r.set_title("Verification Result", fontsize=9)

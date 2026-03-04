@@ -16,6 +16,9 @@ Usage:
 """
 
 import sys
+import subprocess
+import tempfile
+import imageio_ffmpeg
 import numpy as np
 import librosa
 import librosa.display
@@ -38,6 +41,21 @@ SAMPLE_RATE      = 16000
 N_MFCC           = 40
 MAX_DURATION     = 30   # seconds to use per clip
 MAX_TRAIN_SAMPLES = None  # set to None to use all samples
+
+
+def load_audio(audio_path, sr=SAMPLE_RATE):
+    """Load audio, converting m4a to wav via ffmpeg if needed."""
+    if Path(audio_path).suffix.lower() == ".m4a":
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+        subprocess.run(
+            [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", audio_path, "-ar", str(sr), "-ac", "1", tmp_path],
+            check=True, capture_output=True
+        )
+        y, sr_out = librosa.load(tmp_path, sr=sr, mono=True)
+        Path(tmp_path).unlink(missing_ok=True)
+        return y, sr_out
+    return librosa.load(audio_path, sr=sr, mono=True)
 
 
 def plot_fingerprint(y, sr, audio_path, label, prob_robo):
@@ -242,7 +260,7 @@ def predict(audio_path):
     clf     = bundle["model"]
     scaler  = bundle["scaler"]
 
-    y, sr    = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True)
+    y, sr    = load_audio(audio_path, sr=SAMPLE_RATE)
     features = scaler.transform([extract_features(y, sr)])
     prob     = clf.predict_proba(features)[0]
 
