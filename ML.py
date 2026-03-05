@@ -17,7 +17,7 @@ Usage:
 
 import sys
 import subprocess
-import tempfile
+import io
 import imageio_ffmpeg
 import numpy as np
 import librosa
@@ -44,17 +44,13 @@ MAX_TRAIN_SAMPLES = None  # set to None to use all samples
 
 
 def load_audio(audio_path, sr=SAMPLE_RATE):
-    """Load audio, converting m4a to wav via ffmpeg if needed."""
+    """Load audio, piping m4a through ffmpeg in memory if needed."""
     if Path(audio_path).suffix.lower() == ".m4a":
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp_path = tmp.name
-        subprocess.run(
-            [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", audio_path, "-ar", str(sr), "-ac", "1", tmp_path],
-            check=True, capture_output=True
+        result = subprocess.run(
+            [imageio_ffmpeg.get_ffmpeg_exe(), "-i", audio_path, "-f", "wav", "-ar", str(sr), "-ac", "1", "pipe:1"],
+            capture_output=True, check=True
         )
-        y, sr_out = librosa.load(tmp_path, sr=sr, mono=True)
-        Path(tmp_path).unlink(missing_ok=True)
-        return y, sr_out
+        return librosa.load(io.BytesIO(result.stdout), sr=sr, mono=True)
     return librosa.load(audio_path, sr=sr, mono=True)
 
 

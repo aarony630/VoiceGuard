@@ -1,5 +1,5 @@
 import subprocess
-import tempfile
+import io
 import imageio_ffmpeg
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,34 +17,29 @@ MIN_MARGIN     = 0.08           # winner must beat 2nd place by at least this mu
 
 
 def plot_mfcc(ax, audio_path, title):
-    wav_path, is_tmp = to_wav_if_needed(audio_path)
-    y, sr = librosa.load(wav_path, sr=None)
-    if is_tmp:
-        Path(wav_path).unlink(missing_ok=True)
+    src = load_m4a_to_wav_bytes(audio_path) if Path(audio_path).suffix.lower() == ".m4a" else audio_path
+    y, sr = librosa.load(src, sr=None)
     mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
     librosa.display.specshow(mfccs, x_axis="time", ax=ax, sr=sr)
-    ax.set_title(title, fontsize=9)
+    ax.set_title(title, fontsize=10, fontweight="bold")
     ax.set_ylabel("Coeff")
 
 
-def to_wav_if_needed(path):
-    """Convert m4a to a temp wav file via ffmpeg; return path to use."""
-    if Path(path).suffix.lower() != ".m4a":
-        return path, False
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    tmp.close()
-    subprocess.run(
-        [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", path, "-ar", "16000", "-ac", "1", tmp.name],
-        check=True, capture_output=True
+def load_m4a_to_wav_bytes(path):
+    """Decode m4a to WAV bytes in memory via ffmpeg pipe — no temp files."""
+    result = subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-i", path, "-f", "wav", "-ar", "16000", "-ac", "1", "pipe:1"],
+        capture_output=True, check=True
     )
-    return tmp.name, True
+    return io.BytesIO(result.stdout)
 
 
 def get_embedding(encoder, path):
-    wav_path, is_tmp = to_wav_if_needed(path)
-    wav = preprocess_wav(wav_path)
-    if is_tmp:
-        Path(wav_path).unlink(missing_ok=True)
+    if Path(path).suffix.lower() == ".m4a":
+        y, sr = librosa.load(load_m4a_to_wav_bytes(path), sr=16000, mono=True)
+        wav = preprocess_wav(y, source_sr=sr)
+    else:
+        wav = preprocess_wav(path)
     return encoder.embed_utterance(wav)
 
 
@@ -63,7 +58,7 @@ def build_profiles(encoder, name_filter=None):
 
     profiles = {}
     for person_dir in person_dirs:
-        files = sorted([f for ext in ("*.wav", "*.mp3") for f in person_dir.glob(ext)])
+        files = sorted([f for ext in ("*.wav", "*.mp3", "*.m4a") for f in person_dir.glob(ext)])
         if not files:
             print(f"  Warning: no audio files found in {person_dir}, skipping.")
             continue
@@ -123,37 +118,33 @@ def main(name_filter=None):
         print(f"  {name:20s}  similarity={r['sim']:.4f}  [{status}]")
 
     # --- Plot ---
-    n_people = len(profiles)
-    fig, axes = plt.subplots(2, max(n_people, 2), figsize=(6 * max(n_people, 2), 7))
-    fig.suptitle("Voice Match — Per-Person Profiles vs Test Sample", fontsize=13, fontweight="bold")
-
-    # Top row: one enrollment sample per person
-    for col, (name, data) in enumerate(profiles.items()):
-        plot_mfcc(axes[0][col], str(data["files"][0]),
-                  f"{name}  ·  {data['files'][0].name}")
-
-    # Hide unused top-row axes
-    for col in range(n_people, axes.shape[1]):
-        axes[0][col].axis("off")
-
-    # Bottom-left: test sample MFCC
-    plot_mfcc(axes[1][0], TEST_FILE, f"Test  ·  {Path(TEST_FILE).name}")
-
-    # Bottom-right: result panel
-    ax_r = axes[1][1] if axes.shape[1] > 1 else axes[1][0]
-    ax_r.axis("off")
     best_name = max(results, key=lambda n: results[n]["sim"])
     best = results[best_name]
     color = "#2ecc71" if best["matched"] else "#e74c3c"
-    label = f"MATCH: {best_name}" if best["matched"] else "NO MATCH"
-    ax_r.text(0.5, 0.62, label,
-              transform=ax_r.transAxes, fontsize=18, fontweight="bold",
+    label = f"MATCH: {best_name}" if best["matched"] else f"NO MATCH  (closest: {best_name})"
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig.suptitle("Voice Match Result", fontsize=13, fontweight="bold")
+
+    # Left: matched/closest enrollment sample
+    plot_mfcc(axes[0], str(profiles[best_name]["files"][0]),
+              f"Enrollment — {best_name}\n{profiles[best_name]['files'][0].name}")
+
+    # Middle: test sample
+    test_owner = best_name if best["matched"] else "Unknown"
+    plot_mfcc(axes[1], TEST_FILE,
+              f"Test Sample — {test_owner}\n{Path(TEST_FILE).name}")
+
+    # Right: result panel
+    ax_r = axes[2]
+    ax_r.axis("off")
+    ax_r.text(0.5, 0.70, label,
+              transform=ax_r.transAxes, fontsize=16, fontweight="bold",
               color=color, ha="center", va="center")
-    lines = [f"{n}: {r['sim']:.2%}" for n, r in results.items()]
-    ax_r.text(0.5, 0.38, "\n".join(lines),
-              transform=ax_r.transAxes, fontsize=11,
+    ax_r.text(0.5, 0.50, f"Similarity: {best['sim']:.2%}",
+              transform=ax_r.transAxes, fontsize=13,
               color="black", ha="center", va="center")
-    ax_r.text(0.5, 0.18, f"Threshold: {THRESHOLD:.2%}  |  Min margin: {MIN_MARGIN:.0%}",
+    ax_r.text(0.5, 0.22, f"Threshold: {THRESHOLD:.2%}  |  Min margin: {MIN_MARGIN:.0%}",
               transform=ax_r.transAxes, fontsize=9,
               color="grey", ha="center", va="center")
     ax_r.set_title("Verification Result", fontsize=9)
