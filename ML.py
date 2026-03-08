@@ -35,7 +35,7 @@ from sklearn.preprocessing import StandardScaler
 
 # --- Config ---
 ROBOCALL_DIR     = "data/robocalls/audio-wav-16khz"  # cloned GitHub repo audio folder
-NORMAL_DIR       = "data/normal_calls"               # your own normal call recordings
+NORMAL_DIR       = "data/50_speakers_audio_data"     # your own normal call recordings
 MODEL_FILE       = "robocall_detector.pkl"
 SAMPLE_RATE      = 16000
 N_MFCC           = 40
@@ -134,7 +134,7 @@ def extract_features(y, sr):
 def load_audio_folder(folder, label, limit=None):
     """Load all audio files from a folder and extract features."""
     folder = Path(folder)
-    files  = sorted(list(folder.glob("*.wav")) + list(folder.glob("*.mp3")))
+    files  = sorted(list(folder.rglob("*.wav")) + list(folder.rglob("*.mp3")))
     if limit:
         files = files[:limit]
 
@@ -231,14 +231,23 @@ def train():
     scaler   = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_scaled, y, test_size=0.2, random_state=42, stratify=y
+    # 70 / 15 / 15 split
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X_scaled, y, test_size=0.30, random_state=42, stratify=y
     )
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp, test_size=0.50, random_state=42, stratify=y_temp
+    )
+    print(f"Split  →  train={len(X_train)}  val={len(X_val)}  test={len(X_test)}")
 
     clf = RandomForestClassifier(n_estimators=300, random_state=42, n_jobs=-1)
     clf.fit(X_train, y_train)
 
-    print("\nTest set results:")
+    print("\nValidation set results:")
+    y_val_pred = clf.predict(X_val)
+    print(classification_report(y_val, y_val_pred, target_names=["Normal", "Robocall"]))
+
+    print("Test set results:")
     y_pred = clf.predict(X_test)
     print(classification_report(y_test, y_pred, target_names=["Normal", "Robocall"]))
     plot_confusion(y_test, y_pred)
