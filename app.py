@@ -19,13 +19,14 @@ except ImportError:
     RESEMBLYZER_OK = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
-MODEL_FILE         = "robocall_detector.pkl"
-ENROLLMENT_DIR     = "enrollment"
+BASE_DIR           = Path(__file__).resolve().parent
+MODEL_FILE         = BASE_DIR / "robocall_detector.pkl"
+ENROLLMENT_DIR     = BASE_DIR / "enrollment"
 SAMPLE_RATE        = 16000
 N_MFCC             = 40
 MAX_DURATION       = 30
 VOICE_THRESHOLD    = 0.70
-ROBOCALL_THRESHOLD = 0.75   # raised from 0.5 to reduce false positives on mic input
+ROBOCALL_THRESHOLD = 0.60
 
 # ── Load models once at startup ───────────────────────────────────────────────
 print("Loading voice encoder…")
@@ -131,6 +132,7 @@ def run_pipeline(audio_path, log):
     if is_robo:
         emit("🚫 DECISION: BLOCKED — Robocall detected")
         emit("   Call will never reach the customer.")
+        # Do not perform voice identity matching for calls already blocked as robocalls.
         return "BLOCKED_ROBO", dict(robo_conf=robo_conf, is_robo=True, sim=0.0, name="", matched=False)
 
     # Step 2: Voice identity
@@ -564,11 +566,11 @@ with gr.Blocks(css=CSS, title="VoiceGuard") as demo:
                             </div>
                             <div style="margin-bottom:6px;">
                                 Robocall block:
-                                <span style="color:#ef4444;font-weight:700;">&nbsp;≥ 75% confidence</span>
+                                <span style="color:#ef4444;font-weight:700;">&nbsp;≥ {ROBOCALL_THRESHOLD:.0%} confidence</span>
                             </div>
                             <div>
                                 Voice match:
-                                <span style="color:#10b981;font-weight:700;">&nbsp;≥ 75% similarity</span>
+                                <span style="color:#10b981;font-weight:700;">&nbsp;≥ {VOICE_THRESHOLD:.0%} similarity</span>
                             </div>
                         </div>
                     </div>""")

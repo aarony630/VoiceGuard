@@ -38,13 +38,15 @@ from sklearn.model_selection import GroupShuffleSplit, train_test_split
 from sklearn.preprocessing import StandardScaler
 
 # --- Config ---
+BASE_DIR          = Path(__file__).resolve().parent
 ROBOCALL_DIR      = "data/robocalls"
 NORMAL_DIR        = "data/normal_calls"
-MODEL_FILE        = "robocall_detector.pkl"
+MODEL_FILE        = BASE_DIR / "robocall_detector.pkl"
 SAMPLE_RATE       = 16000
 N_MFCC            = 40
 MAX_DURATION      = 30
 MAX_TRAIN_SAMPLES = 1000
+ROBOCALL_THRESHOLD = 0.60
 
 # If True, split by group instead of random file-level split.
 # This helps reduce leakage from near-duplicate files in the same folder/source.
@@ -464,7 +466,8 @@ def train():
                 "sample_rate": SAMPLE_RATE,
                 "n_mfcc": N_MFCC,
                 "max_duration": MAX_DURATION,
-                "use_group_split": USE_GROUP_SPLIT
+                "use_group_split": USE_GROUP_SPLIT,
+                "robocall_threshold": ROBOCALL_THRESHOLD
             }
         },
         MODEL_FILE
@@ -486,7 +489,7 @@ def predict(audio_path, save_fingerprint=True):
     features_scaled = scaler.transform(features)
 
     prob = clf.predict_proba(features_scaled)[0]
-    is_robo = prob[1] >= 0.5
+    is_robo = prob[1] >= ROBOCALL_THRESHOLD
     label = "ROBOCALL" if is_robo else "NORMAL CALL"
 
     print(f"\nFile     : {audio_path}")
