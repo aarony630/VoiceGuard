@@ -9,8 +9,19 @@ VoiceGuard is an AI-powered call screening system that protects customers by aut
 
 <img width="541" height="691" alt="Group 1 (3)" src="https://github.com/user-attachments/assets/a641deb9-717b-476c-a935-c65ee12d7cf9" />
 
+
 ---
 
+## Dataset
+The robocall detection model was trained using the **[Robocall Audio Dataset](https://github.com/wspr-ncsu/robocall-audio-dataset.git)** provided by WSPR-NCSU. 
+
+This dataset contains:
+* **Robocall Samples:** A diverse collection of recorded automated calls, including telemarketing, scams, and informational broadcasts.
+* **Human Speech (Non-Robocall):** Comparative audio samples of genuine human interaction to ensure high precision in filtering.
+
+For more details on the data collection methodology, visit the official [WSPR-NCSU repository](https://github.com/wspr-ncsu/robocall-audio-dataset.git).
+
+---
 ## Features
 
 - **Two-stage ML pipeline** — robocall detection followed by voice identity verification
